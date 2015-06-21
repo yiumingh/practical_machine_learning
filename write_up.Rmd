@@ -1,0 +1,82 @@
+---
+title: "Practical Machine Learning"
+author: "Yiu Ming Huynh"
+date: "June 21, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE, results='hide'}
+library(RCurl)
+
+training_URL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+training_file <- getURL(training_URL)
+training_data <- read.csv(text= training_file, header=TRUE)
+
+testing_URL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testing_file <- getURL(testing_URL)
+testing_data <- as.data.frame(read.csv(text= testing_file, header=TRUE))
+
+library(caret)
+library(kernlab)
+```
+
+In this assignment, I used boosting with trees (gbm) to create my prediction model.
+
+## Cleaning data
+
+The data set provided needs to be cleaned up in order to facilitate learning.
+
+Specifically, I need to remove the all columns that contain NA, and I need to remove the columns `problem_id` and `X` from the data. They are meaningless data, and including them will result in an incorrect predictor that differentiates on the X column.
+
+```{r, results='hide'}
+
+# Must get rid of columns with NAs so that machine learning algorithm doesn't crash
+remove_na = function(data) {
+  return(data[, colSums(is.na(data)) != nrow(data)])
+}
+testing_data <- remove_na(testing_data)
+columns <- colnames(testing_data)
+remove <- c("problem_id", "X")
+columns <- columns[! columns %in% remove]
+training_data <- training_data[,c(columns, "classe")]
+
+```
+
+## Creating the partitions
+
+In this exercise, I decided to train with 75% of the training data and perform cross-validation with 25% of the data. With 4904 test points, I was confident that if it could pass a good chunk of 4904 test cases, it can pass just 20 cases.
+
+```{r, results='hide'}
+inTrain <- createDataPartition(y=training_data$classe, p=0.75, list=FALSE)
+training_data.train <- training_data[inTrain,]
+training_data.test <- training_data[-inTrain,]
+```
+
+## Creating the model
+
+To create the model, I ran the following code. (Note to grader: I saved the modfit in memory, so I added an if wrapper to generate the markdown document without re-running gbm to save time.)
+
+```{r}
+if(file.exists("modfit2.RData")) {
+  load("modfit2.RData")
+} else {
+  modfit <- train(classe ~ ., method="gbm", data=training_data.train)
+}
+
+modfit
+```
+
+## Out of sample error
+
+To verify that the prediction model is not subject to overfitting, a test set was created from 25% of the training data.
+
+```{r, results='hide'}
+training_data.test$prediction <- predict(modfit, training_data.test)
+m <- training_data.test$classe == training_data.test$prediction
+matches <- table(m)["TRUE"]
+```
+
+And the out of sample error using holdout cross validation is
+```{r}
+1 - matches / length(m)
+```
